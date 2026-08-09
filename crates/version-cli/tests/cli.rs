@@ -489,8 +489,8 @@ fn merging_a_patch_branch_back_does_not_regress_below_a_released_version() {
     repo.git(&["checkout", "--quiet", "main"]);
     repo.git(&["merge", "--quiet", "--no-ff", "maint", "-m", "merge hotfix"]);
 
-    // `git describe` reports v1.0.1 here, which would give 1.0.2.dev7.
-    assert_eq!(repo.git(&["describe", "--tags", "--abbrev=0"]), "v1.0.1");
+    // `git describe` may select either tag on different Git versions; its
+    // tie-break rules are deliberately not part of this tool's semantics.
 
     // Measured from the highest reachable tag instead: c5, c6, c7, hotfix, merge.
     let hash = repo.short_hash();
