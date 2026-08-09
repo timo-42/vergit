@@ -11,6 +11,13 @@ use pep440::{LocalSeg, Version};
 /// Used when the repository has no tag to start from.
 const UNTAGGED_BASE: &str = "0.0.0";
 
+/// The version embedded by the release workflow, or Cargo's package version for
+/// local and CI builds.
+const BUILD_VERSION: &str = match option_env!("VERGIT_BUILD_VERSION") {
+    Some(version) => version,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
 /// The version this commit is measured from.
 enum Base {
     /// `HEAD` itself carries a version tag; reproduce it verbatim.
@@ -40,7 +47,7 @@ fn run() -> Result<ExitCode, String> {
             return Ok(ExitCode::SUCCESS);
         }
         Parsed::ToolVersion => {
-            println!("vergit {}", env!("CARGO_PKG_VERSION"));
+            println!("vergit {BUILD_VERSION}");
             return Ok(ExitCode::SUCCESS);
         }
         Parsed::Run(args) => args,
