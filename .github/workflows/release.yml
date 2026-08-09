@@ -102,16 +102,22 @@ jobs:
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }}
 
-      - name: Stage artifact
+      - name: Package Unix binary
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
-          suffix=""
-          case "${{ matrix.target }}" in *windows*) suffix=".exe" ;; esac
-          src="target/${{ matrix.target }}/release/vergit${suffix}"
           archive="vergit-${{ matrix.target }}.zip"
-          zip -j "$archive" "$src"
+          zip -j "$archive" "target/${{ matrix.target }}/release/vergit"
           unzip -l "$archive"
+
+      - name: Package Windows binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $archive = "vergit-${{ matrix.target }}.zip"
+          Compress-Archive -Path "target/${{ matrix.target }}/release/vergit.exe" -DestinationPath $archive
+          Get-ChildItem $archive
 
       - uses: actions/upload-artifact@v6
         with:
