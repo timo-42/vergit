@@ -1,0 +1,55 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        # Integration tests build their own repositories, but the manual
+        # smoke check below needs this repository's real tags.
+        with:
+          fetch-depth: 0
+
+      - run: cargo fmt --all --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test --locked
+
+      - name: Check binary size
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --release --locked
+          bytes=$(stat -c%s target/release/vergit)
+          echo "vergit binary: ${bytes} bytes ($((bytes / 1024)) KB)"
+          # Size is a feature here; fail loudly if a dependency creeps in.
+          budget=$((600 * 1024))
+          if [ "$bytes" -gt "$budget" ]; then
+            echo "::error::binary grew past ${budget} bytes"
+            exit 1
+          fi
+
+      - name: Smoke test the action
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo run --release --quiet -- pep440
+
+  differential:
+    name: differential test vs python packaging
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - run: pip install packaging
+      - name: Compare normalization and ordering against the reference
+        run: python3 scripts/differential_test.py

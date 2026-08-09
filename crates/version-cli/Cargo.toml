@@ -1,0 +1,18 @@
+[package]
+name = "vergit"
+description = "Generate a PEP 440 version string from git state."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "vergit"
+path = "src/main.rs"
+
+[dependencies]
+pep440 = { path = "../pep440" }
+
+[dev-dependencies]
+# Integration tests compare emitted versions by PEP 440 order, not as strings.
+pep440 = { path = "../pep440" }

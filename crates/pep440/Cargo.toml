@@ -1,0 +1,9 @@
+[package]
+name = "pep440"
+description = "Parse, normalize, render and compare PEP 440 version identifiers."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]

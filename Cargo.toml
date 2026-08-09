@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = ["crates/pep440", "crates/version-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/timo-42/vergit"
+
+# Size over speed: see README "Binary size".
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
