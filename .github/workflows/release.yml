@@ -105,13 +105,14 @@ jobs:
           suffix=""
           case "${{ matrix.target }}" in *windows*) suffix=".exe" ;; esac
           src="target/${{ matrix.target }}/release/vergit${suffix}"
-          cp "$src" "vergit-${{ matrix.target }}${suffix}"
-          ls -l "vergit-${{ matrix.target }}${suffix}"
+          archive="vergit-${{ matrix.target }}.zip"
+          zip -j "$archive" "$src"
+          unzip -l "$archive"
 
       - uses: actions/upload-artifact@v6
         with:
           name: vergit-${{ matrix.target }}
-          path: vergit-${{ matrix.target }}*
+          path: vergit-${{ matrix.target }}.zip
           if-no-files-found: error
 
   publish:
