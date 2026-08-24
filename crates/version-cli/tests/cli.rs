@@ -252,6 +252,95 @@ fn from_normalizes_without_touching_git() {
 }
 
 #[test]
+fn docker_format_preserves_local_metadata_with_a_safe_separator() {
+    let repo = Repo::new("docker-format");
+    repo.commit("one");
+    repo.git(&["tag", "v1.2.3"]);
+    repo.commit("two");
+
+    let hash = repo.short_hash();
+    assert_eq!(
+        repo.version(&["--format", "docker"]),
+        format!("1.2.4.dev1.{hash}")
+    );
+
+    repo.write("file.txt", "dirty");
+    assert_eq!(
+        repo.version(&["--format=docker", "--separator", "-"]),
+        format!("1.2.4.dev1-{hash}.dirty")
+    );
+}
+
+#[test]
+fn docker_format_normalizes_input_and_encodes_epochs() {
+    assert_eq!(
+        run(&["pep440", "--from", "V1.0-RC-1+ABC_1", "--format=docker"]).0,
+        "1.0rc1.abc.1"
+    );
+    assert_eq!(
+        run(&[
+            "pep440",
+            "--from",
+            "2!1.0+abc",
+            "--format=docker",
+            "--separator=-",
+        ])
+        .0,
+        "epoch2-1.0-abc"
+    );
+}
+
+#[test]
+fn docker_format_enforces_the_tag_grammar_and_length_limit() {
+    let valid = format!("1.0+{}", "a".repeat(124));
+    let too_long = format!("1.0+{}", "a".repeat(125));
+    assert_eq!(run(&["pep440", "--from", &valid, "--format=docker"]).1, 0);
+    let (out, code) = run(&["pep440", "--from", &too_long, "--format=docker"]);
+    assert_eq!(code, 2);
+    assert!(out.contains("maximum is 128"), "{out}");
+
+    let (out, code) = run(&[
+        "pep440",
+        "--from",
+        "1.0",
+        "--next-patch",
+        "--with-prefix",
+        "--tag-prefix",
+        "bad/",
+        "--format=docker",
+    ]);
+    assert_eq!(code, 2);
+    assert!(out.contains("not a valid Docker tag"), "{out}");
+}
+
+#[test]
+fn docker_format_rejects_invalid_format_options() {
+    for args in [
+        vec!["pep440", "--from", "1.0", "--format", "oci"],
+        vec!["pep440", "--from", "1.0", "--separator", "-"],
+        vec![
+            "pep440",
+            "--from",
+            "1.0",
+            "--format=docker",
+            "--separator",
+            "+",
+        ],
+        vec![
+            "pep440",
+            "--from",
+            "1.0",
+            "--format=docker",
+            "--separator",
+            "..",
+        ],
+        vec!["pep440", "--from", "1.0", "--format=docker", "--check"],
+    ] {
+        assert_eq!(run(&args).1, 2, "{args:?} should be rejected");
+    }
+}
+
+#[test]
 fn next_prints_a_bare_taggable_version() {
     let repo = Repo::new("next");
     repo.commit("one");

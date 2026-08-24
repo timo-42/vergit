@@ -132,6 +132,8 @@ vergit pep440 [options]
       --from <STR>       Use STR as the current version instead of reading git
       --check            With --from, exit 0 if STR is already canonical, 1 if not
       --no-local         Omit the +local label (required by public indexes)
+      --format <FORMAT>  Output format: pep440 or docker [default: pep440]
+      --separator <CHAR> Docker local-version separator: ., - or _ [default: .]
       --tag-prefix <P>   Tag prefix to match and strip [default: v]
   -C <DIR>               Run git in DIR
   -h, --help / -V, --version
@@ -159,6 +161,26 @@ PyPI and other public indexes must reject local version labels, so pass
 $ vergit pep440 --no-local
 1.2.4.dev5
 ```
+
+### Tagging a Docker image
+
+Docker tags do not allow PEP 440's `+` local-version separator. The `docker`
+output format preserves the commit and dirty metadata while rendering a valid
+Docker tag:
+
+```console
+$ vergit pep440 --format=docker
+1.2.4.dev5.g1a2b3c4
+$ vergit pep440 --format=docker --separator=-
+1.2.4.dev5-g1a2b3c4
+$ docker build -t "example/app:$(vergit pep440 --format=docker)" .
+```
+
+The separator can be `.`, `-` or `_` and defaults to `.`. It replaces only the
+boundary before the local label; dots within that label remain dots. PEP 440
+epochs are encoded without the Docker-incompatible `!`, so `2!1.0+abc` becomes
+`epoch2.1.0.abc`. Output is rejected if the final tag contains an invalid
+character or exceeds Docker's 128-byte limit.
 
 ## Actions
 

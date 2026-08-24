@@ -27,6 +27,8 @@ Options:
       --check            With --from, exit 0 if STR is already canonical,
                          1 if not, and print nothing
       --no-local         Omit the +local label (required by public indexes)
+      --format <FORMAT>  Output format: pep440 or docker [default: pep440]
+      --separator <CHAR> Docker local-version separator: ., - or _ [default: .]
       --tag-prefix <P>   Tag prefix to match and strip [default: v]
   -C <DIR>               Run git in DIR
   -h, --help             Print this help
@@ -37,6 +39,11 @@ Describing the current commit, given tag v1.2.3:
   on the tag, dirty          1.2.3+g1a2b3c4.dirty
   5 commits later            1.2.4.dev5+g1a2b3c4
   no tags at all             0.0.0.dev42+g1a2b3c4
+
+Docker-compatible output:
+  --format docker             1.2.4.dev5.g1a2b3c4
+  --format docker --separator -
+                              1.2.4.dev5-g1a2b3c4
 
 Choosing the next tag, given tag v1.2.3:
   --next-patch               1.2.4
@@ -70,6 +77,15 @@ pub struct Args {
     pub level: Option<Level>,
     pub phase: Option<PreKind>,
     pub with_prefix: bool,
+    pub format: OutputFormat,
+    pub separator: char,
+    separator_given: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum OutputFormat {
+    Pep440,
+    Docker,
 }
 
 impl Args {
@@ -96,6 +112,9 @@ pub fn parse(argv: impl IntoIterator<Item = String>) -> Result<Parsed, String> {
         level: None,
         phase: None,
         with_prefix: false,
+        format: OutputFormat::Pep440,
+        separator: '.',
+        separator_given: false,
     };
 
     // The subcommand names the version format. PEP 440 is the only one so far,
@@ -123,6 +142,11 @@ pub fn parse(argv: impl IntoIterator<Item = String>) -> Result<Parsed, String> {
 
         match flag.as_str() {
             "--from" => args.from = Some(value("--from")?),
+            "--format" => args.format = parse_format(&value("--format")?)?,
+            "--separator" => {
+                args.separator = parse_separator(&value("--separator")?)?;
+                args.separator_given = true;
+            }
             "--tag-prefix" => args.tag_prefix = value("--tag-prefix")?,
             "-C" => args.dir = Some(PathBuf::from(value("-C")?)),
             "--check" => args.check = true,
@@ -142,6 +166,28 @@ pub fn parse(argv: impl IntoIterator<Item = String>) -> Result<Parsed, String> {
 
     validate(&args)?;
     Ok(Parsed::Run(args))
+}
+
+fn parse_format(value: &str) -> Result<OutputFormat, String> {
+    match value {
+        "pep440" => Ok(OutputFormat::Pep440),
+        "docker" => Ok(OutputFormat::Docker),
+        _ => Err(format!(
+            "unknown output format {value:?} (expected `pep440` or `docker`)"
+        )),
+    }
+}
+
+fn parse_separator(value: &str) -> Result<char, String> {
+    let mut chars = value.chars();
+    let separator = chars
+        .next()
+        .filter(|_| chars.next().is_none())
+        .ok_or_else(|| "--separator needs exactly one character: `.`, `-` or `_`".to_owned())?;
+    match separator {
+        '.' | '-' | '_' => Ok(separator),
+        _ => Err("--separator must be one of `.`, `-` or `_`".to_owned()),
+    }
 }
 
 /// Release level and pre-release phase are independent axes, so one of each may
@@ -192,6 +238,9 @@ fn validate(args: &Args) -> Result<(), String> {
                 "--check only validates --from, so it cannot be combined with --next-*".to_owned(),
             );
         }
+        if args.format != OutputFormat::Pep440 {
+            return Err("--check cannot be combined with --format docker".to_owned());
+        }
     }
     // Next-tag output is a bare version to be tagged, so there is no local
     // label to suppress and no reason to accept a flag implying otherwise.
@@ -202,6 +251,9 @@ fn validate(args: &Args) -> Result<(), String> {
     }
     if args.with_prefix && !args.is_next() {
         return Err("--with-prefix only applies to --next-* output".to_owned());
+    }
+    if args.separator_given && args.format != OutputFormat::Docker {
+        return Err("--separator requires --format docker".to_owned());
     }
     Ok(())
 }

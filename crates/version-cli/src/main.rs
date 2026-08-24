@@ -5,7 +5,7 @@ mod git;
 
 use std::process::ExitCode;
 
-use args::{Args, Parsed};
+use args::{Args, OutputFormat, Parsed};
 use pep440::{LocalSeg, Version};
 
 /// Used when the repository has no tag to start from.
@@ -60,10 +60,18 @@ fn run() -> Result<ExitCode, String> {
         });
     }
 
-    let line = match args.is_next() {
-        true => next_tag(&args)?,
-        false => describe(&args)?.to_string(),
+    let is_next = args.is_next();
+    let version = match is_next {
+        true => next_version(&args)?,
+        false => describe(&args)?,
     };
+    let mut line = render(&version, args.format, args.separator)?;
+    if is_next && args.with_prefix {
+        line.insert_str(0, &args.tag_prefix);
+        if args.format == OutputFormat::Docker {
+            validate_docker_tag(&line)?;
+        }
+    }
     println!("{line}");
     Ok(ExitCode::SUCCESS)
 }
@@ -170,7 +178,7 @@ fn describe(args: &Args) -> Result<Version, String> {
 /// one, and not the derived developmental version. Commits since a tag do not
 /// change which version comes after it, and bumping from the maximum means the
 /// result cannot collide with a tag that is already reachable.
-fn next_tag(args: &Args) -> Result<String, String> {
+fn next_version(args: &Args) -> Result<Version, String> {
     let current = match &args.from {
         Some(_) => parse_from(args)?,
         None => {
@@ -183,16 +191,51 @@ fn next_tag(args: &Args) -> Result<String, String> {
         }
     };
 
-    let next = current
+    current
         .next(args.level, args.phase)
-        .map_err(|e| format!("no next version after {current}: {e}"))?;
+        .map_err(|e| format!("no next version after {current}: {e}"))
+}
 
-    let prefix = if args.with_prefix {
-        &args.tag_prefix
-    } else {
-        ""
-    };
-    Ok(format!("{prefix}{next}"))
+/// Render the PEP 440 value for its destination without changing how it was
+/// derived or how it compares. Docker tags admit dots, dashes and underscores,
+/// but not PEP 440's `+` local-version boundary or `!` epoch marker.
+fn render(version: &Version, format: OutputFormat, separator: char) -> Result<String, String> {
+    match format {
+        OutputFormat::Pep440 => Ok(version.to_string()),
+        OutputFormat::Docker => {
+            let canonical = version.to_string();
+            let mut tag = match canonical.split_once('!') {
+                Some((epoch, rest)) => format!("epoch{epoch}{separator}{rest}"),
+                None => canonical,
+            };
+            if let Some(local) = tag.find('+') {
+                tag.replace_range(local..=local, &separator.to_string());
+            }
+            validate_docker_tag(&tag)?;
+            Ok(tag)
+        }
+    }
+}
+
+fn validate_docker_tag(tag: &str) -> Result<(), String> {
+    if tag.len() > 128 {
+        return Err(format!(
+            "Docker tag is {} bytes; the maximum is 128",
+            tag.len()
+        ));
+    }
+
+    let mut chars = tag.chars();
+    let valid_first = chars
+        .next()
+        .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_');
+    let valid_rest = chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'));
+    if !valid_first || !valid_rest {
+        return Err(format!(
+            "{tag:?} is not a valid Docker tag (allowed: ASCII letters, digits, `_`, `.` and `-`; the first character cannot be `.` or `-`)"
+        ));
+    }
+    Ok(())
 }
 
 fn parse_from(args: &Args) -> Result<Version, String> {
